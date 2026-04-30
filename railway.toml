@@ -5,7 +5,7 @@ builder = "NIXPACKS"
 [deploy]
 # Migrations run here (before the app container starts) so `npm start` can bind
 # immediately and Railway's /api/health check does not wait behind a hung migrate.
-preDeployCommand = "npx prisma migrate deploy"
+preDeployCommand = "node scripts/railway-migrate.js"
 startCommand = "npm start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300

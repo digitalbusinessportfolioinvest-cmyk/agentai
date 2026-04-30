@@ -9,10 +9,15 @@ One Node service + managed PostgreSQL. Twilio webhooks use your **public HTTPS U
 3. **`preDeployCommand`** runs `prisma migrate deploy` **before** the app container starts.
 4. **`npm start`** runs only `node src/server.js` so the server listens immediately for the healthcheck.
 
-## 2. Add PostgreSQL
+## 2. Add PostgreSQL (critical: `DATABASE_URL` on the **web** service)
 
 1. In the project → **New** → **Database** → **PostgreSQL**.
-2. Open the **Postgres** service → **Variables** → copy **`DATABASE_URL`** (or use **Connect** → **Add to Service** on your **AgentAi** service so `DATABASE_URL` is injected automatically).
+2. Open your **Node / AgentAi web service** (the one that runs `npm start`) → **Variables**.
+3. Add **`DATABASE_URL`** here — **not** only on the Postgres card:
+   - **Best:** **New variable** → **Reference** → choose the **PostgreSQL** service → variable **`DATABASE_URL`**.
+   - **Or:** Postgres service → **Connect** / **Variables** → copy the full `postgresql://…` value → paste as **`DATABASE_URL`** on the **web** service.
+
+If **`DATABASE_URL`** exists only on Postgres, or is an **empty** variable on the web service, Prisma will error: *`resolved to an empty string`* — migrations and the app will fail.
 
 ## 3. Public URL (Twilio + CORS + TwiML)
 
@@ -77,7 +82,8 @@ Or run `npm run db:seed` locally with `DATABASE_URL` pointed at the Railway Post
 
 | Symptom | Check |
 |---------|--------|
-| **Healthcheck failure** (build OK, deploy OK, then red) | 1) **`DATABASE_URL`** on the **web** service (reference Postgres). 2) Try **`?sslmode=require`** on the URL. 3) Open **Deploy logs**: migrations run in **`preDeployCommand`** — if that step fails, fix DB URL first. 4) After migrate, **`npm start`** only runs Node — app listens on **`0.0.0.0`**. |
+| **`P1012` / `DATABASE_URL` … empty string** | **`DATABASE_URL`** must be on the **web** service (Reference from Postgres). Delete empty `DATABASE_URL` variables. See **§2** above. |
+| **Healthcheck failure** (build OK, deploy OK, then red) | **`DATABASE_URL`** on web service; **`?sslmode=require`** if needed; read **pre-deploy** logs; app listens on **`0.0.0.0`**. |
 | Build fails on Prisma | `prisma` is in **dependencies**; `postinstall` runs `prisma generate`. |
 | Boot fails on migrate | `DATABASE_URL` correct; Postgres reachable; migrations committed in `prisma/migrations/`. |
 | Twilio 403 / “Signature invalid” | `APP_URL` exactly matches public URL; `TWILIO_AUTH_TOKEN` correct; `SKIP_TWILIO_SIGNATURE` not `true`. |
