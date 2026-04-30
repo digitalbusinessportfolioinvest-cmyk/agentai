@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const prisma = require('../db');
 const router = express.Router();
 
 // POST /api/auth/register
@@ -10,7 +11,6 @@ router.post('/register', async (req, res, next) => {
     if (!email || !password) {
       return res.status(400).json({ success: false, error: { code: 'MISSING_FIELDS', message: 'Email and password required' } });
     }
-    const prisma = req.app.locals.prisma;
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       return res.status(409).json({ success: false, error: { code: 'EMAIL_EXISTS', message: 'Email already registered' } });
@@ -32,7 +32,6 @@ router.post('/login', async (req, res, next) => {
     if (!email || !password) {
       return res.status(400).json({ success: false, error: { code: 'MISSING_FIELDS', message: 'Email and password required' } });
     }
-    const prisma = req.app.locals.prisma;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       return res.status(401).json({ success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });
@@ -46,7 +45,6 @@ router.post('/login', async (req, res, next) => {
 const auth = require('../middleware/auth');
 router.get('/me', auth, async (req, res, next) => {
   try {
-    const prisma = req.app.locals.prisma;
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
       select: { id: true, email: true, companyName: true, plan: true, createdAt: true }

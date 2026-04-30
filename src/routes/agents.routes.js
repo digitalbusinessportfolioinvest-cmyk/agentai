@@ -3,6 +3,13 @@ const auth = require('../middleware/auth');
 const { normalizeLanguageOverride } = require('../utils/language');
 const router = express.Router();
 
+/** Empty string from forms is not a valid FK — must be null. */
+function normalizeSalesAgentId(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  return String(value).trim();
+}
+
 router.use(auth);
 
 // GET /api/agents
@@ -42,8 +49,9 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ success: false, error: { code: 'MISSING_FIELDS', message: 'Name and system prompt required' } });
     }
     // If salesAgentId is provided, validate ownership
-    if (salesAgentId) {
-      const sa = await prisma.agent.findFirst({ where: { id: salesAgentId, userId: req.userId } });
+    const normalizedSalesId = normalizeSalesAgentId(salesAgentId);
+    if (normalizedSalesId) {
+      const sa = await prisma.agent.findFirst({ where: { id: normalizedSalesId, userId: req.userId } });
       if (!sa) {
         return res.status(400).json({ success: false, error: { code: 'INVALID_SALES_AGENT', message: 'Sales agent not found or not owned' } });
       }
@@ -59,7 +67,7 @@ router.post('/', async (req, res, next) => {
         greetingMessage, goodbyeMessage,
         fallbackBehavior: fallbackBehavior || 'take_message',
         role: role || 'standalone',
-        salesAgentId: salesAgentId || null,
+        salesAgentId: normalizedSalesId,
         handoffMessage: handoffMessage || null,
         languageOverride: normalizeLanguageOverride(languageOverride)
       }
@@ -88,8 +96,11 @@ router.put('/:id', async (req, res, next) => {
     if (Object.prototype.hasOwnProperty.call(data, 'languageOverride')) {
       data.languageOverride = normalizeLanguageOverride(data.languageOverride);
     }
-    // Validate salesAgentId ownership if changing
-    if (data.salesAgentId && data.salesAgentId !== existing.salesAgentId) {
+    if (Object.prototype.hasOwnProperty.call(data, 'salesAgentId')) {
+      data.salesAgentId = normalizeSalesAgentId(data.salesAgentId);
+    }
+    // Validate sales agent FK whenever a non-null id is sent
+    if (data.salesAgentId) {
       const sa = await prisma.agent.findFirst({ where: { id: data.salesAgentId, userId: req.userId } });
       if (!sa) {
         return res.status(400).json({ success: false, error: { code: 'INVALID_SALES_AGENT', message: 'Sales agent not found or not owned' } });

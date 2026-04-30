@@ -12,6 +12,7 @@
     "start": "node src/server.js",
     "start:with-migrate": "prisma migrate deploy && node src/server.js",
     "db:migrate": "npx prisma migrate dev",
+    "db:ping": "node scripts/db-ping.js",
     "db:seed": "node scripts/seed.js",
     "db:studio": "npx prisma studio",
     "setup": "npm install && npx prisma migrate dev --name init && node scripts/seed.js",

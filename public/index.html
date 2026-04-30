@@ -126,7 +126,7 @@ function AgentForm({agentId,setPage}){
     greetingMessage:DEFAULTS.greeting,aiDisclosure:DEFAULTS.aiDisclosure,
     closingMessage:DEFAULTS.closing,goodbyeMessage:DEFAULTS.goodbye,
     fallbackBehavior:'take_message',maxCallDuration:600,
-    role:'standalone',salesAgentId:'',handoffMessage:'',
+    role:'standalone',salesAgentId:null,handoffMessage:'',
     notifyDashboard:true,notifyEmail:'',notifyWhatsapp:'',notifyWebhookUrl:''});
   const[steps,setSteps]=useState([]);const[saving,setSaving]=useState(false);const[msg,setMsg]=useState('');
   const[allAgents,setAllAgents]=useState([]);
@@ -145,7 +145,7 @@ function AgentForm({agentId,setPage}){
       notifyEmail:ag.notifyEmail||'',notifyWhatsapp:ag.notifyWhatsapp||'',notifyWebhookUrl:ag.notifyWebhookUrl||'',
       greetingMessage:ag.greetingMessage||DEFAULTS.greeting,aiDisclosure:ag.aiDisclosure||DEFAULTS.aiDisclosure,
       closingMessage:ag.closingMessage||DEFAULTS.closing,goodbyeMessage:ag.goodbyeMessage||DEFAULTS.goodbye,
-      role:ag.role||'standalone',salesAgentId:ag.salesAgentId||'',handoffMessage:ag.handoffMessage||'',
+      role:ag.role||'standalone',salesAgentId:ag.salesAgentId??null,handoffMessage:ag.handoffMessage||'',
       languageOverride:ag.languageOverride||null});
       setSteps(ag.scriptSteps||[])});
     api(`/pricing/${agentId}`).then(d=>{
@@ -350,7 +350,7 @@ function AgentForm({agentId,setPage}){
         <h3 className="font-semibold text-sm mb-2">🤝 Sales Agent Handoff</h3>
         <p className="text-xs text-gray-500 mb-3">When the script completes and pricing is configured, hand off the same call to a sales agent who communicates the calculated total. Leave empty to skip handoff (the conversation just ends).</p>
         <div><label className="text-sm text-gray-400 block mb-1">Sales agent to hand off to</label>
-          <select className="input" value={a.salesAgentId||''} onChange={e=>setA({...a,salesAgentId:e.target.value||null})}>
+          <select className="input" value={a.salesAgentId??''} onChange={e=>setA({...a,salesAgentId:e.target.value||null})}>
             <option value="">- No handoff -</option>
             {allAgents.filter(x=>x.id!==agentId).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
           </select>

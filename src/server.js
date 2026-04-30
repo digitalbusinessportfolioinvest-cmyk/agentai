@@ -1,3 +1,4 @@
+// Env must load before any module that touches process.env (db.js also calls dotenv.config()).
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
