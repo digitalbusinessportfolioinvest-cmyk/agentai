@@ -6,7 +6,8 @@ One Node service + managed PostgreSQL. Twilio webhooks use your **public HTTPS U
 
 1. [Railway Dashboard](https://railway.app) → **New Project** → **Deploy from GitHub repo** → select `digitalbusinessportfolioinvest-cmyk/agentai`.
 2. Railway builds with **Nixpacks** (`railway.toml`). Install runs `postinstall` → `prisma generate`.
-3. **Deploy** runs `npm start` → `prisma migrate deploy` then `node src/server.js`.
+3. **`preDeployCommand`** runs `prisma migrate deploy` **before** the app container starts.
+4. **`npm start`** runs only `node src/server.js` so the server listens immediately for the healthcheck.
 
 ## 2. Add PostgreSQL
 
@@ -57,7 +58,7 @@ Use the **same** `https://…` host as **`APP_URL`**.
 
 ## 5. First-time database content
 
-Migrations run on every deploy via `npm start`. To create the demo user once:
+Migrations run on each deploy via **`preDeployCommand`** in `railway.toml` (not inside `npm start`). To create the demo user once:
 
 ```bash
 # From your laptop, with Railway CLI linked and DATABASE_URL set, or:
@@ -76,7 +77,7 @@ Or run `npm run db:seed` locally with `DATABASE_URL` pointed at the Railway Post
 
 | Symptom | Check |
 |---------|--------|
-| **Healthcheck failure** (build OK, deploy OK, then red) | 1) **`DATABASE_URL`** on the **same** service as the app (reference Postgres). 2) Postgres URL often needs **`?sslmode=require`** if you pasted an external URL. 3) **`prisma migrate deploy`** must finish — open **Deploy logs**; if migrate hangs, the HTTP server never starts. 4) App must listen on **`0.0.0.0`** (fixed in recent code). |
+| **Healthcheck failure** (build OK, deploy OK, then red) | 1) **`DATABASE_URL`** on the **web** service (reference Postgres). 2) Try **`?sslmode=require`** on the URL. 3) Open **Deploy logs**: migrations run in **`preDeployCommand`** — if that step fails, fix DB URL first. 4) After migrate, **`npm start`** only runs Node — app listens on **`0.0.0.0`**. |
 | Build fails on Prisma | `prisma` is in **dependencies**; `postinstall` runs `prisma generate`. |
 | Boot fails on migrate | `DATABASE_URL` correct; Postgres reachable; migrations committed in `prisma/migrations/`. |
 | Twilio 403 / “Signature invalid” | `APP_URL` exactly matches public URL; `TWILIO_AUTH_TOKEN` correct; `SKIP_TWILIO_SIGNATURE` not `true`. |
