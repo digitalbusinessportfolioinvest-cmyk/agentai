@@ -76,6 +76,7 @@ Or run `npm run db:seed` locally with `DATABASE_URL` pointed at the Railway Post
 
 | Symptom | Check |
 |---------|--------|
+| **Healthcheck failure** (build OK, deploy OK, then red) | 1) **`DATABASE_URL`** on the **same** service as the app (reference Postgres). 2) Postgres URL often needs **`?sslmode=require`** if you pasted an external URL. 3) **`prisma migrate deploy`** must finish — open **Deploy logs**; if migrate hangs, the HTTP server never starts. 4) App must listen on **`0.0.0.0`** (fixed in recent code). |
 | Build fails on Prisma | `prisma` is in **dependencies**; `postinstall` runs `prisma generate`. |
 | Boot fails on migrate | `DATABASE_URL` correct; Postgres reachable; migrations committed in `prisma/migrations/`. |
 | Twilio 403 / “Signature invalid” | `APP_URL` exactly matches public URL; `TWILIO_AUTH_TOKEN` correct; `SKIP_TWILIO_SIGNATURE` not `true`. |

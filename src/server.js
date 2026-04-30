@@ -63,7 +63,11 @@ const path = require('path');
 
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: process.env.NODE_ENV === 'production' ? process.env.APP_URL : '*' }));
+const corsOrigin =
+  process.env.NODE_ENV === 'production'
+    ? (process.env.APP_URL || '*')
+    : '*';
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(require('./middleware/request-log'));
@@ -111,7 +115,8 @@ app.use((err, req, res, next) => {
 });
 
 // Start server (use http server for WebSocket support)
-server.listen(PORT, () => {
+// Bind 0.0.0.0 so Railway / Docker / cloud healthchecks can reach the port.
+server.listen(PORT, '0.0.0.0', () => {
   logger.info(`AgentAi server running on port ${PORT}`);
   logger.info(`Dashboard: http://localhost:${PORT}`);
   logger.info(`API: http://localhost:${PORT}/api/health`);
