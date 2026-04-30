@@ -221,6 +221,7 @@ Webhook payload format on conversation completion:
 ## Documentation index
 
 - **`README.md`** — this file (overview, quick start)
+- **`RAILWAY.md`** — deploy on Railway (PostgreSQL, env vars, Twilio URLs)
 - **`DEPLOYMENT.md`** — production VPS deployment, step by step
 - **`ARCHITECTURE.md`** — technical design, data model, flows
 - **`CLAUDE.md`** — implementation reference for contributors

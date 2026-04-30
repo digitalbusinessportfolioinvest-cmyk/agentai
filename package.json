@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "AI-powered communication management platform",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
+    "postinstall": "prisma generate",
+    "start": "prisma migrate deploy && node src/server.js",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "node scripts/seed.js",
     "db:studio": "npx prisma studio",
@@ -23,11 +27,10 @@
     "jsonwebtoken": "^9.0.2",
     "openai": "^4.73.0",
     "twilio": "^4.23.0",
+    "prisma": "^5.22.0",
     "uuid": "^9.0.1",
     "ws": "^8.18.0",
     "winston": "^3.14.0"
   },
-  "devDependencies": {
-    "prisma": "^5.22.0"
-  }
+  "devDependencies": {}
 }
