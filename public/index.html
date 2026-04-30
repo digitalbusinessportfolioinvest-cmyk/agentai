@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentAi Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e4e4e7}
+.sidebar{background:#16171d;border-right:1px solid #27272a}
+.card{background:#1c1d24;border:1px solid #27272a;border-radius:12px}
+.btn-primary{background:#00e599;color:#0f1117;font-weight:600;border-radius:8px;padding:8px 20px;cursor:pointer;border:none}
+.btn-primary:hover{background:#00cc88}
+.btn-secondary{background:#27272a;color:#e4e4e7;border-radius:8px;padding:8px 20px;cursor:pointer;border:1px solid #3f3f46}
+.btn-secondary:hover{background:#3f3f46}
+.btn-danger{background:#dc2626;color:white;border-radius:8px;padding:8px 16px;cursor:pointer;border:none}
+.input{background:#27272a;border:1px solid #3f3f46;color:#e4e4e7;border-radius:8px;padding:10px 14px;width:100%;outline:none}
+.input:focus{border-color:#00e599}
+.input::placeholder{color:#71717a}
+textarea.input{min-height:100px;resize:vertical}
+.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600}
+.badge-green{background:#052e16;color:#4ade80}.badge-blue{background:#172554;color:#60a5fa}
+.badge-yellow{background:#422006;color:#fbbf24}.badge-red{background:#450a0a;color:#f87171}
+.badge-purple{background:#2e1065;color:#c084fc}
+.nav-item{padding:10px 20px;cursor:pointer;border-radius:8px;margin:2px 8px;transition:background .15s}
+.nav-item:hover{background:#27272a}
+.nav-item.active{background:#00e599;color:#0f1117;font-weight:600}
+.chat-bubble{max-width:75%;padding:10px 14px;border-radius:12px;margin:4px 0}
+.chat-inbound{background:#27272a;align-self:flex-start;border-bottom-left-radius:4px}
+.chat-outbound{background:#052e16;align-self:flex-end;border-bottom-right-radius:4px}
+.warn-box{background:#422006;border:1px solid #854d0e;border-radius:8px;padding:12px;color:#fbbf24}
+.fade-in{animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect}=React;
+const API='/api';
+let authToken=localStorage.getItem('agentai_token');
+async function api(p,o={}){const h={'Content-Type':'application/json'};if(authToken)h['Authorization']='Bearer '+authToken;const r=await fetch(API+p,{...o,headers:{...h,...o.headers}});const d=await r.json();if(!d.success)throw new Error(d.error?.message||'API error');return d}
+
+const LLM_MODELS=[
+{id:'openai/gpt-4o-mini',name:'GPT-4o Mini',provider:'OpenAI',cost:'$'},
+{id:'openai/gpt-5-nano',name:'GPT-5 Nano',provider:'OpenAI',cost:'$'},
+{id:'anthropic/claude-haiku-4.5',name:'Claude Haiku 4.5',provider:'Anthropic',cost:'$$'},
+{id:'anthropic/claude-sonnet-4.6',name:'Claude Sonnet 4.6',provider:'Anthropic',cost:'$$$'},
+{id:'google/gemini-flash-2.0',name:'Gemini Flash 2.0',provider:'Google',cost:'$'},
+{id:'deepseek/deepseek-chat',name:'DeepSeek Chat',provider:'DeepSeek',cost:'$'},
+{id:'mistralai/mistral-small',name:'Mistral Small',provider:'Mistral',cost:'$'},
+{id:'x-ai/grok-2',name:'Grok 2',provider:'xAI',cost:'$$'},
+];
+
+const DEFAULTS={
+greeting:"Hi, thanks for contacting us. I'm the virtual assistant for [your company]. I'm here to help you and collect some details so our team can assist you as quickly as possible. How can I help you?",
+aiDisclosure:"Yes, I'm an AI assistant. I'm here to collect your information accurately so our team can get back to you with a personalized response. If at any point you'd prefer to speak with a person, just let me know.",
+closing:"I have all the details I need. Our team will review your request and get back to you shortly. Is there anything else you'd like to add before we finish?",
+goodbye:"Thank you for your time. We'll be in touch soon. Have a great day!",
+systemPrompt:"You are a professional and friendly virtual assistant. You help collect information from potential clients in a natural, conversational way. Be warm but efficient. Don't make promises about pricing or timelines \u2014 say the team will follow up."
+};
+
+function App(){
+  const[page,setPage]=useState('login');const[user,setUser]=useState(null);
+  useEffect(()=>{if(authToken){api('/auth/me').then(d=>{setUser(d.data);setPage('agents')}).catch(()=>{authToken=null;localStorage.removeItem('agentai_token')})}},[]);
+  function login(t,u){authToken=t;localStorage.setItem('agentai_token',t);setUser(u);setPage('agents')}
+  function logout(){authToken=null;localStorage.removeItem('agentai_token');setUser(null);setPage('login')}
+  if(!user)return <LoginPage onLogin={login}/>;
+  return <Dashboard page={page} setPage={setPage} user={user} onLogout={logout}/>
+}
+
+function LoginPage({onLogin}){
+  const[email,setEmail]=useState('demo@agentai.local');const[pw,setPw]=useState('demo1234');const[err,setErr]=useState('');const[reg,setReg]=useState(false);
+  async function go(e){e.preventDefault();setErr('');try{const d=await api(reg?'/auth/register':'/auth/login',{method:'POST',body:JSON.stringify({email,password:pw})});onLogin(d.data.token,d.data.user)}catch(e){setErr(e.message)}}
+  return(<div className="min-h-screen flex items-center justify-center"><div className="card p-8 w-full max-w-md fade-in">
+    <div className="text-center mb-8"><h1 className="text-3xl font-bold" style={{color:'#00e599'}}>AgentAi</h1><p className="text-gray-400 mt-2">AI Voice & WhatsApp Platform</p></div>
+    <form onSubmit={go}><input className="input mb-3" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/>
+    <input className="input mb-4" type="password" placeholder="Password" value={pw} onChange={e=>setPw(e.target.value)}/>
+    {err&&<p className="text-red-400 text-sm mb-3">{err}</p>}
+    <button className="btn-primary w-full mb-3" type="submit">{reg?'Create Account':'Sign In'}</button>
+    <p className="text-center text-gray-500 text-sm cursor-pointer hover:text-gray-300" onClick={()=>setReg(!reg)}>{reg?'Already have an account? Sign in':"Don't have an account? Register"}</p></form></div></div>)
+}
+
+function Dashboard({page,setPage,user,onLogout}){
+  const nav=[{id:'agents',l:'🤖 Agents'},{id:'numbers',l:'📞 Numbers'},{id:'conversations',l:'💬 Conversations'},{id:'settings',l:'⚙️ Settings'}];
+  return(<div className="flex min-h-screen">
+    <div className="sidebar w-56 flex flex-col py-4">
+      <div className="px-5 mb-6"><h1 className="text-xl font-bold" style={{color:'#00e599'}}>AgentAi</h1><p className="text-xs text-gray-500">{user.email}</p></div>
+      {nav.map(n=><div key={n.id} className={`nav-item ${page===n.id||page.startsWith(n.id)?'active':''}`} onClick={()=>setPage(n.id)}>{n.l}</div>)}
+      <div className="mt-auto px-4 pt-4 border-t border-gray-800"><div className="nav-item text-gray-500 text-sm" onClick={onLogout}>Logout</div></div>
+    </div>
+    <div className="flex-1 p-6 overflow-auto">
+      {page==='agents'&&<AgentsPage setPage={setPage}/>}
+      {page==='agent-new'&&<AgentForm setPage={setPage}/>}
+      {page.startsWith('agent-edit:')&&<AgentForm agentId={page.split(':')[1]} setPage={setPage}/>}
+      {page==='numbers'&&<NumbersPage/>}
+      {page==='conversations'&&<ConversationsPage setPage={setPage}/>}
+      {page.startsWith('conversation:')&&<ConversationDetail id={page.split(':')[1]} setPage={setPage}/>}
+      {page==='settings'&&<SettingsPage/>}
+    </div></div>)
+}
+
+function AgentsPage({setPage}){
+  const[agents,setAgents]=useState([]);const[ld,setLd]=useState(true);
+  useEffect(()=>{api('/agents').then(d=>setAgents(d.data)).finally(()=>setLd(false))},[]);
+  return(<div className="fade-in">
+    <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold">Agents</h2><button className="btn-primary" onClick={()=>setPage('agent-new')}>+ New Agent</button></div>
+    {ld?<p className="text-gray-500">Loading...</p>:agents.length===0?
+      <div className="card p-12 text-center"><p className="text-gray-400 mb-4">No agents yet</p><button className="btn-primary" onClick={()=>setPage('agent-new')}>Create your first agent</button></div>:
+      <div className="grid gap-4">{agents.map(a=><div key={a.id} className="card p-5 cursor-pointer hover:border-green-800 transition-colors" onClick={()=>setPage(`agent-edit:${a.id}`)}>
+        <div className="flex justify-between items-start"><div><h3 className="text-lg font-semibold">{a.name}</h3><p className="text-gray-400 text-sm mt-1">{a.description||'No description'}</p>
+        <div className="flex gap-2 mt-3">{JSON.parse(a.channels||'[]').map(ch=><span key={ch} className={`badge ${ch==='voice'?'badge-blue':'badge-green'}`}>{ch}</span>)}
+        <span className="badge badge-purple">{LLM_MODELS.find(m=>m.id===a.llmModel)?.name||a.llmModel}</span></div></div>
+        <div className="text-right"><span className={`badge ${a.isActive?'badge-green':'badge-red'}`}>{a.isActive?'Active':'Inactive'}</span>
+        <p className="text-gray-500 text-xs mt-2">{a.scriptSteps?.length||0} steps · {a._count?.conversations||0} convs</p></div></div></div>)}</div>}
+  </div>)
+}
+
+function AgentForm({agentId,setPage}){
+  const[tab,setTab]=useState('personality');
+  const[a,setA]=useState({name:'',description:'',systemPrompt:DEFAULTS.systemPrompt,channels:['voice','whatsapp'],
+    llmModel:'openai/gpt-4o-mini',languageOverride:null,temperature:0.7,voiceId:'',voiceName:'',
+    greetingMessage:DEFAULTS.greeting,aiDisclosure:DEFAULTS.aiDisclosure,
+    closingMessage:DEFAULTS.closing,goodbyeMessage:DEFAULTS.goodbye,
+    fallbackBehavior:'take_message',maxCallDuration:600,
+    role:'standalone',salesAgentId:'',handoffMessage:'',
+    notifyDashboard:true,notifyEmail:'',notifyWhatsapp:'',notifyWebhookUrl:''});
+  const[steps,setSteps]=useState([]);const[saving,setSaving]=useState(false);const[msg,setMsg]=useState('');
+  const[allAgents,setAllAgents]=useState([]);
+  // Pricing state — local to the form, persisted via /api/pricing endpoints
+  const[pricingVars,setPricingVars]=useState([]);
+  const[pricingFormula,setPricingFormula]=useState('');
+  const[pricingCurrency,setPricingCurrency]=useState('EUR');
+  const[pricingTestInputs,setPricingTestInputs]=useState({});
+  const[pricingTestResult,setPricingTestResult]=useState(null);
+  const[pricingMsg,setPricingMsg]=useState('');
+
+  useEffect(()=>{api('/agents').then(d=>setAllAgents(d.data)).catch(()=>{})},[]);
+
+  useEffect(()=>{if(agentId){
+    api(`/agents/${agentId}`).then(d=>{const ag=d.data;setA({...ag,channels:JSON.parse(ag.channels||'[]'),
+      notifyEmail:ag.notifyEmail||'',notifyWhatsapp:ag.notifyWhatsapp||'',notifyWebhookUrl:ag.notifyWebhookUrl||'',
+      greetingMessage:ag.greetingMessage||DEFAULTS.greeting,aiDisclosure:ag.aiDisclosure||DEFAULTS.aiDisclosure,
+      closingMessage:ag.closingMessage||DEFAULTS.closing,goodbyeMessage:ag.goodbyeMessage||DEFAULTS.goodbye,
+      role:ag.role||'standalone',salesAgentId:ag.salesAgentId||'',handoffMessage:ag.handoffMessage||'',
+      languageOverride:ag.languageOverride||null});
+      setSteps(ag.scriptSteps||[])});
+    api(`/pricing/${agentId}`).then(d=>{
+      setPricingVars(d.data.variables||[]);
+      setPricingFormula(d.data.formula||'');
+      setPricingCurrency(d.data.currency||'EUR');
+    }).catch(()=>{});
+  }},[agentId]);
+
+  async function save(){setSaving(true);setMsg('');try{if(agentId){await api(`/agents/${agentId}`,{method:'PUT',body:JSON.stringify(a)})}else{const d=await api('/agents',{method:'POST',body:JSON.stringify(a)});setPage(`agent-edit:${d.data.id}`)}setMsg('Saved!');setTimeout(()=>setMsg(''),2000)}catch(e){setMsg('Error: '+e.message)}setSaving(false)}
+  async function addStep(){if(!agentId){setMsg('Save the agent first');return}try{const d=await api(`/scripts/${agentId}`,{method:'POST',body:JSON.stringify({label:'field_'+(steps.length+1),promptText:'',dataType:'text'})});setSteps([...steps,d.data])}catch(e){setMsg('Error: '+e.message)}}
+  async function updateStep(id,data){try{await api(`/scripts/${agentId}/${id}`,{method:'PUT',body:JSON.stringify(data)});setSteps(steps.map(s=>s.id===id?{...s,...data}:s))}catch(e){console.error(e)}}
+  async function deleteStep(id){try{await api(`/scripts/${agentId}/${id}`,{method:'DELETE'});setSteps(steps.filter(s=>s.id!==id))}catch(e){console.error(e)}}
+  async function deleteAgent(){if(!confirm('Delete this agent?'))return;try{await api(`/agents/${agentId}`,{method:'DELETE'});setPage('agents')}catch(e){setMsg(e.message)}}
+  async function testWebhook(){if(!a.notifyWebhookUrl){setMsg('Enter a webhook URL first');return}try{const d=await api('/v1/test-webhook',{method:'POST',body:JSON.stringify({url:a.notifyWebhookUrl})});setMsg('Webhook test sent!')}catch(e){setMsg('Webhook failed: '+e.message)}}
+
+  // ---- Pricing helpers ----
+  function addPricingVar(){
+    if(pricingVars.length>=15){setPricingMsg('Max 15 variables');return}
+    setPricingVars([...pricingVars,{label:'var_'+(pricingVars.length+1),type:'number',required:true,choices:[]}]);
+  }
+  function updatePricingVar(i,patch){
+    setPricingVars(pricingVars.map((v,j)=>j===i?{...v,...patch}:v));
+  }
+  function deletePricingVar(i){
+    setPricingVars(pricingVars.filter((_,j)=>j!==i));
+  }
+  async function savePricing(){
+    if(!agentId){setPricingMsg('Save the agent first');return}
+    setPricingMsg('');
+    try{
+      // Strip empty choices arrays for non-choice types
+      const clean=pricingVars.map(v=>({label:v.label,type:v.type,required:!!v.required,choices:v.type==='choice'?(v.choices||[]):undefined}));
+      await api(`/pricing/${agentId}`,{method:'PUT',body:JSON.stringify({variables:clean,formula:pricingFormula,currency:pricingCurrency})});
+      setPricingMsg('Pricing saved!');setTimeout(()=>setPricingMsg(''),2500);
+    }catch(e){setPricingMsg('Error: '+e.message)}
+  }
+  async function testPricing(){
+    if(!agentId){setPricingMsg('Save the agent first');return}
+    setPricingMsg('');setPricingTestResult(null);
+    try{
+      const d=await api(`/pricing/${agentId}/test`,{method:'POST',body:JSON.stringify({inputs:pricingTestInputs})});
+      setPricingTestResult(d.data);
+    }catch(e){setPricingMsg('Test failed: '+e.message)}
+  }
+
+  const tabs=[{id:'personality',l:'🧠 Personality'},{id:'presentation',l:'👋 Presentation'},{id:'ai',l:'🤖 AI Disclosure'},{id:'script',l:`📋 Script (${steps.length})`},{id:'pricing',l:`💰 Pricing${pricingVars.length>0?' ('+pricingVars.length+')':''}`},{id:'closing',l:'🏁 Closing'},{id:'output',l:'📤 Output'}];
+
+  return(<div className="fade-in max-w-3xl">
+    <div className="flex items-center gap-3 mb-6"><span className="cursor-pointer text-gray-400 hover:text-white" onClick={()=>setPage('agents')}>← Agents</span>
+    <h2 className="text-2xl font-bold">{agentId?'Edit Agent':'New Agent'}</h2>
+    {msg&&<span className={`text-sm ${msg.startsWith('Error')?'text-red-400':'text-green-400'}`}>{msg}</span>}</div>
+
+    <div className="flex gap-1 mb-6 flex-wrap">{tabs.map(t=><button key={t.id} className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${tab===t.id?'bg-green-900 text-green-300':'text-gray-400 hover:text-white hover:bg-gray-800'}`} onClick={()=>setTab(t.id)}>{t.l}</button>)}</div>
+
+    {/* PERSONALITY */}
+    {tab==='personality'&&<div className="card p-6 space-y-4">
+      <div><label className="text-sm text-gray-400 block mb-1">Agent Name</label><input className="input" placeholder="e.g. Photography Receptionist" value={a.name} onChange={e=>setA({...a,name:e.target.value})}/></div>
+      <div><label className="text-sm text-gray-400 block mb-1">Description</label><input className="input" placeholder="Short description" value={a.description||''} onChange={e=>setA({...a,description:e.target.value})}/></div>
+      <div><label className="text-sm text-gray-400 block mb-1">Personality & Behavior</label>
+        <textarea className="input" style={{minHeight:'180px'}} placeholder="You are a professional receptionist..." value={a.systemPrompt} onChange={e=>setA({...a,systemPrompt:e.target.value})}/>
+        <p className="text-xs text-gray-500 mt-1">Define who the agent is, its tone, and behavior rules. This is the core personality that drives every response.</p></div>
+      <div><label className="text-sm text-gray-400 block mb-1">Channels</label><div className="flex gap-4">
+        {['voice','whatsapp'].map(ch=><label key={ch} className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={a.channels.includes(ch)}
+        onChange={e=>{const c=e.target.checked?[...a.channels,ch]:a.channels.filter(x=>x!==ch);setA({...a,channels:c})}}/><span className="capitalize">{ch}</span></label>)}</div></div>
+      <div className="grid grid-cols-2 gap-4">
+        <div><label className="text-sm text-gray-400 block mb-1">AI Model</label><select className="input" value={a.llmModel} onChange={e=>setA({...a,llmModel:e.target.value})}>
+          {LLM_MODELS.map(m=><option key={m.id} value={m.id}>{m.name} ({m.cost})</option>)}</select></div>
+        <div><label className="text-sm text-gray-400 block mb-1">Voice ID (ElevenLabs)</label><input className="input" placeholder="Leave empty for default" value={a.voiceId||''} onChange={e=>setA({...a,voiceId:e.target.value})}/></div>
+      </div>
+      <div><label className="text-sm text-gray-400 block mb-1">Conversation language</label>
+        <select className="input" value={a.languageOverride||''} onChange={e=>setA({...a,languageOverride:e.target.value||null})}>
+          <option value="">Use phone number setting</option>
+          <option value="es">Spanish</option><option value="en">English</option><option value="it">Italian</option><option value="fr">French</option><option value="de">German</option><option value="pt">Portuguese</option>
+        </select>
+        <p className="text-xs text-gray-500 mt-1">Overrides the language configured on the phone number for voice & WhatsApp (pilot testing with US numbers, etc.). Leave as default to follow each number&apos;s setting.</p></div>
+      <div><label className="text-sm text-gray-400 block mb-1">Temperature: {a.temperature}</label>
+        <input type="range" min="0" max="1" step="0.1" value={a.temperature} onChange={e=>setA({...a,temperature:parseFloat(e.target.value)})} className="w-full"/>
+        <p className="text-xs text-gray-500">Lower = more precise, higher = more creative</p></div>
+    </div>}
+
+    {/* PRESENTATION */}
+    {tab==='presentation'&&<div className="card p-6 space-y-4">
+      <p className="text-gray-400 text-sm">How the agent introduces itself at the beginning of every conversation. Edit the proposed text or write your own.</p>
+      <div><label className="text-sm text-gray-400 block mb-1">Greeting / Presentation</label>
+        <textarea className="input" style={{minHeight:'120px'}} value={a.greetingMessage} onChange={e=>setA({...a,greetingMessage:e.target.value})}/>
+        <div className="flex justify-end mt-1"><button className="text-xs text-gray-500 hover:text-green-400" onClick={()=>setA({...a,greetingMessage:DEFAULTS.greeting})}>Reset to default</button></div></div>
+      <div className="card p-4" style={{background:'#0f1117'}}>
+        <p className="text-xs text-gray-500 mb-2">Preview (the agent will adapt this naturally to the conversation)</p>
+        <p className="text-sm italic text-gray-300">"{a.greetingMessage}"</p></div>
+    </div>}
+
+    {/* AI DISCLOSURE */}
+    {tab==='ai'&&<div className="card p-6 space-y-4">
+      <div className="warn-box">
+        <p className="font-semibold mb-1">⚠️ Honesty requirement</p>
+        <p className="text-sm">The agent must ALWAYS acknowledge being an AI when asked. This cannot be disabled. You can customize the wording but the meaning must remain truthful.</p>
+      </div>
+      <div><label className="text-sm text-gray-400 block mb-1">Response when asked "Are you an AI?"</label>
+        <textarea className="input" style={{minHeight:'100px'}} value={a.aiDisclosure} onChange={e=>setA({...a,aiDisclosure:e.target.value})}/>
+        <div className="flex justify-end mt-1"><button className="text-xs text-gray-500 hover:text-green-400" onClick={()=>setA({...a,aiDisclosure:DEFAULTS.aiDisclosure})}>Reset to default</button></div></div>
+      <div className="card p-4" style={{background:'#0f1117'}}>
+        <p className="text-xs text-gray-500 mb-2">Preview</p>
+        <p className="text-sm"><span className="text-gray-500">Customer:</span> "Are you a real person?"</p>
+        <p className="text-sm mt-1"><span className="text-green-400">Agent:</span> "{a.aiDisclosure}"</p></div>
+    </div>}
+
+    {/* SCRIPT */}
+    {tab==='script'&&<div className="space-y-3">
+      <p className="text-gray-400 text-sm mb-2">Define what data the agent collects. Each step is a field with an optional question. If you leave the question empty, the AI will ask naturally based on the field name.</p>
+      {!agentId&&<p className="text-yellow-400 text-sm">Save the agent first to add steps.</p>}
+      {steps.map((s,i)=><div key={s.id} className="card p-4">
+        <div className="flex justify-between items-start mb-3"><span className="badge badge-blue">Step {i+1}</span><button className="text-red-400 text-xs hover:text-red-300" onClick={()=>deleteStep(s.id)}>Delete</button></div>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div><label className="text-xs text-gray-500">Field name</label><input className="input text-sm" placeholder="e.g. event_type" value={s.label} onChange={e=>updateStep(s.id,{label:e.target.value})}/></div>
+          <div><label className="text-xs text-gray-500">Data type</label><select className="input text-sm" value={s.dataType} onChange={e=>updateStep(s.id,{dataType:e.target.value})}>
+            {['text','number','date','email','phone','boolean','choice'].map(t=><option key={t}>{t}</option>)}</select></div></div>
+        <div><label className="text-xs text-gray-500">Question (optional - AI will ask naturally if empty)</label>
+          <input className="input text-sm" placeholder="e.g. What type of event is this for?" value={s.promptText} onChange={e=>updateStep(s.id,{promptText:e.target.value})}/></div>
+        {s.dataType==='choice'&&<div className="mt-2"><label className="text-xs text-gray-500">Choices (comma-separated)</label>
+          <input className="input text-sm" placeholder="option1, option2, option3" value={s.choices?JSON.parse(s.choices).join(', '):''}
+          onChange={e=>updateStep(s.id,{choices:JSON.stringify(e.target.value.split(',').map(x=>x.trim()).filter(Boolean))})}/></div>}
+        <label className="flex items-center gap-2 mt-2 text-sm text-gray-400"><input type="checkbox" checked={s.isRequired} onChange={e=>updateStep(s.id,{isRequired:e.target.checked})}/>Required</label>
+      </div>)}
+      <button className="btn-secondary w-full" onClick={addStep}>+ Add Field</button>
+    </div>}
+
+    {/* PRICING */}
+    {tab==='pricing'&&<div className="space-y-4">
+      <div className="card p-5">
+        <p className="text-gray-400 text-sm mb-3">Define up to 15 variables and a formula. When the script completes, the system uses the data collected to compute the total. The total is then handed off to the sales agent (configured in the Closing tab).</p>
+        {!agentId&&<p className="text-yellow-400 text-sm mb-3">Save the agent first.</p>}
+
+        <h3 className="font-semibold text-sm mb-2">Variables ({pricingVars.length}/15)</h3>
+        <div className="space-y-2">
+          {pricingVars.map((v,i)=><div key={i} className="card p-3" style={{background:'#0f1117'}}>
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              <div><label className="text-xs text-gray-500">Name</label><input className="input text-sm" placeholder="e.g. duration_hours" value={v.label} onChange={e=>updatePricingVar(i,{label:e.target.value})}/></div>
+              <div><label className="text-xs text-gray-500">Type</label><select className="input text-sm" value={v.type} onChange={e=>updatePricingVar(i,{type:e.target.value})}>
+                <option value="number">number</option><option value="text">text</option><option value="boolean">yes/no</option><option value="choice">choice</option></select></div>
+              <div className="flex items-end justify-between">
+                <label className="flex items-center gap-2 text-xs text-gray-400"><input type="checkbox" checked={!!v.required} onChange={e=>updatePricingVar(i,{required:e.target.checked})}/>Required</label>
+                <button className="text-red-400 text-xs hover:text-red-300" onClick={()=>deletePricingVar(i)}>Delete</button>
+              </div>
+            </div>
+            {v.type==='choice'&&<div><label className="text-xs text-gray-500">Choices (comma-separated)</label>
+              <input className="input text-sm" placeholder="boda, corporativo, retrato" value={(v.choices||[]).join(', ')} onChange={e=>updatePricingVar(i,{choices:e.target.value.split(',').map(x=>x.trim()).filter(Boolean)})}/>
+              <p className="text-xs text-gray-500 mt-1">In the formula use <code className="text-green-400">{v.label}_idx</code> for the position (0, 1, 2…)</p></div>}
+          </div>)}
+        </div>
+        <button className="btn-secondary w-full mt-3" onClick={addPricingVar} disabled={pricingVars.length>=15||!agentId}>+ Add Variable</button>
+      </div>
+
+      <div className="card p-5">
+        <h3 className="font-semibold text-sm mb-2">Formula</h3>
+        <textarea className="input font-mono text-sm" style={{minHeight:'120px'}} placeholder="((event_type_idx == 0 ? 1200 : 350) + max(0, duration_hours - 4) * 180 + (drone ? 250 : 0)) * 1.21" value={pricingFormula} onChange={e=>setPricingFormula(e.target.value)}/>
+        <p className="text-xs text-gray-500 mt-1">Operators: <code>+ - * / %</code>, comparison: <code>== != &gt; &lt; &gt;= &lt;=</code>, conditional: <code>cond ? a : b</code>, logical: <code>and or not</code>. Built-ins: <code>min, max, abs, round, floor, ceil, pow, sqrt</code>.</p>
+        <div className="flex items-center gap-3 mt-3">
+          <label className="text-xs text-gray-500">Currency:</label>
+          <input className="input text-sm w-24" value={pricingCurrency} onChange={e=>setPricingCurrency(e.target.value)}/>
+          <button className="btn-primary ml-auto" onClick={savePricing} disabled={!agentId}>Save Pricing</button>
+        </div>
+        {pricingMsg&&<p className={`text-sm mt-2 ${pricingMsg.startsWith('Error')||pricingMsg.includes('failed')?'text-red-400':'text-green-400'}`}>{pricingMsg}</p>}
+      </div>
+
+      {pricingVars.length>0&&<div className="card p-5">
+        <h3 className="font-semibold text-sm mb-2">🧪 Test Calculation</h3>
+        <p className="text-xs text-gray-500 mb-3">Fill in sample values and verify the formula returns what you expect.</p>
+        <div className="space-y-2">
+          {pricingVars.map((v,i)=><div key={i} className="grid grid-cols-3 gap-2 items-center">
+            <span className="text-sm text-gray-400">{v.label} <span className="text-xs text-gray-600">({v.type})</span></span>
+            <div className="col-span-2">
+              {v.type==='choice'?<select className="input text-sm" value={pricingTestInputs[v.label]||''} onChange={e=>setPricingTestInputs({...pricingTestInputs,[v.label]:e.target.value})}><option value="">- select -</option>{(v.choices||[]).map(c=><option key={c}>{c}</option>)}</select>
+              :v.type==='boolean'?<select className="input text-sm" value={pricingTestInputs[v.label]||''} onChange={e=>setPricingTestInputs({...pricingTestInputs,[v.label]:e.target.value})}><option value="">- select -</option><option value="true">yes</option><option value="false">no</option></select>
+              :<input className="input text-sm" type={v.type==='number'?'number':'text'} value={pricingTestInputs[v.label]||''} onChange={e=>setPricingTestInputs({...pricingTestInputs,[v.label]:e.target.value})}/>}
+            </div>
+          </div>)}
+        </div>
+        <div className="flex items-center gap-3 mt-4">
+          <button className="btn-secondary" onClick={testPricing}>Calculate</button>
+          {pricingTestResult&&<div className="text-sm">Total: <span className="text-green-400 font-bold text-lg">{pricingTestResult.amount.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} {pricingTestResult.currency}</span></div>}
+        </div>
+      </div>}
+    </div>}
+
+    {/* CLOSING */}
+    {tab==='closing'&&<div className="card p-6 space-y-4">
+      <p className="text-gray-400 text-sm">What the agent says when all required data has been collected.</p>
+      <div><label className="text-sm text-gray-400 block mb-1">Closing Message (all data collected)</label>
+        <textarea className="input" style={{minHeight:'100px'}} value={a.closingMessage||''} onChange={e=>setA({...a,closingMessage:e.target.value})}/>
+        <div className="flex justify-end mt-1"><button className="text-xs text-gray-500 hover:text-green-400" onClick={()=>setA({...a,closingMessage:DEFAULTS.closing})}>Reset to default</button></div></div>
+      <div><label className="text-sm text-gray-400 block mb-1">Final Goodbye</label>
+        <textarea className="input" style={{minHeight:'60px'}} value={a.goodbyeMessage||''} onChange={e=>setA({...a,goodbyeMessage:e.target.value})}/>
+        <div className="flex justify-end mt-1"><button className="text-xs text-gray-500 hover:text-green-400" onClick={()=>setA({...a,goodbyeMessage:DEFAULTS.goodbye})}>Reset to default</button></div></div>
+      <div><label className="text-sm text-gray-400 block mb-1">Fallback (if AI can't handle)</label>
+        <select className="input" value={a.fallbackBehavior} onChange={e=>setA({...a,fallbackBehavior:e.target.value})}>
+          <option value="take_message">Take a message and say the team will follow up</option>
+          <option value="transfer">Transfer to a human</option>
+          <option value="hangup">Apologize and end the conversation</option></select></div>
+
+      <div className="border-t border-gray-700 pt-4 mt-2">
+        <h3 className="font-semibold text-sm mb-2">🤝 Sales Agent Handoff</h3>
+        <p className="text-xs text-gray-500 mb-3">When the script completes and pricing is configured, hand off the same call to a sales agent who communicates the calculated total. Leave empty to skip handoff (the conversation just ends).</p>
+        <div><label className="text-sm text-gray-400 block mb-1">Sales agent to hand off to</label>
+          <select className="input" value={a.salesAgentId||''} onChange={e=>setA({...a,salesAgentId:e.target.value||null})}>
+            <option value="">- No handoff -</option>
+            {allAgents.filter(x=>x.id!==agentId).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        </div>
+        {a.salesAgentId&&<div className="mt-3"><label className="text-sm text-gray-400 block mb-1">Bridge phrase (intake says this right before passing the call)</label>
+          <textarea className="input" style={{minHeight:'80px'}} placeholder="Perfecto, ya tengo todos los datos. Te paso con Marta del equipo comercial. Un momento por favor." value={a.handoffMessage||''} onChange={e=>setA({...a,handoffMessage:e.target.value})}/>
+        </div>}
+      </div>
+    </div>}
+
+    {/* OUTPUT */}
+    {tab==='output'&&<div className="card p-6 space-y-4">
+      <p className="text-gray-400 text-sm mb-2">How do you want to receive the collected data when a conversation completes?</p>
+      <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-700 cursor-pointer hover:border-gray-500">
+        <input type="checkbox" checked={a.notifyDashboard!==false} onChange={e=>setA({...a,notifyDashboard:e.target.checked})}/>
+        <div><span className="font-medium">📊 Dashboard</span><p className="text-xs text-gray-500">Always visible in the Conversations tab</p></div></label>
+
+      <div className="p-3 rounded-lg border border-gray-700">
+        <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={!!a.notifyEmail} onChange={e=>setA({...a,notifyEmail:e.target.checked?a.notifyEmail||'':''})}/><span className="font-medium">📧 Email</span></label>
+        {a.notifyEmail!==''&&a.notifyEmail!==undefined&&<input className="input mt-2 text-sm" placeholder="your@email.com" value={a.notifyEmail} onChange={e=>setA({...a,notifyEmail:e.target.value})}/>}</div>
+
+      <div className="p-3 rounded-lg border border-gray-700">
+        <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={!!a.notifyWhatsapp} onChange={e=>setA({...a,notifyWhatsapp:e.target.checked?a.notifyWhatsapp||'':''})}/><span className="font-medium">💬 WhatsApp</span></label>
+        {a.notifyWhatsapp!==''&&a.notifyWhatsapp!==undefined&&<input className="input mt-2 text-sm" placeholder="+34612345678" value={a.notifyWhatsapp} onChange={e=>setA({...a,notifyWhatsapp:e.target.value})}/>}
+        <p className="text-xs text-gray-500 mt-1">Receive a WhatsApp with the summary after each conversation</p></div>
+
+      <div className="p-3 rounded-lg border border-gray-700">
+        <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={!!a.notifyWebhookUrl} onChange={e=>setA({...a,notifyWebhookUrl:e.target.checked?a.notifyWebhookUrl||'':''})}/><span className="font-medium">🔗 Webhook (API)</span></label>
+        {a.notifyWebhookUrl!==''&&a.notifyWebhookUrl!==undefined&&<div>
+          <input className="input mt-2 text-sm" placeholder="https://your-system.com/webhook" value={a.notifyWebhookUrl} onChange={e=>setA({...a,notifyWebhookUrl:e.target.value})}/>
+          <button className="text-xs text-green-400 mt-1 hover:underline" onClick={testWebhook}>Send test webhook</button></div>}
+        <p className="text-xs text-gray-500 mt-1">POST with JSON data when complete. For budgeting modules, CRMs, or any external system.</p>
+      </div>
+
+      <div className="card p-4 mt-4" style={{background:'#0f1117'}}>
+        <p className="text-xs text-gray-500 mb-2">API endpoint for pulling data:</p>
+        <code className="text-xs text-green-400">GET /api/v1/conversations/completed?agentId=...</code>
+        <p className="text-xs text-gray-500 mt-1">Returns all completed conversations with collected data in clean JSON format.</p></div>
+    </div>}
+
+    <div className="flex justify-between mt-6">
+      <div>{agentId&&<button className="btn-danger" onClick={deleteAgent}>Delete Agent</button>}</div>
+      <button className="btn-primary" onClick={save} disabled={saving}>{saving?'Saving...':'Save Agent'}</button></div>
+  </div>)
+}
+
+function NumbersPage(){
+  const[nums,setNums]=useState([]);const[agents,setAgents]=useState([]);const[f,setF]=useState({twilioNumber:'',language:'es',agentId:'',label:''});const[show,setShow]=useState(false);
+  useEffect(()=>{api('/numbers').then(d=>setNums(d.data));api('/agents').then(d=>setAgents(d.data))},[]);
+  async function add(e){e.preventDefault();try{const d=await api('/numbers',{method:'POST',body:JSON.stringify(f)});setNums([d.data,...nums]);setShow(false);setF({twilioNumber:'',language:'es',agentId:'',label:''})}catch(e){alert(e.message)}}
+  async function del(id){if(!confirm('Remove?'))return;await api(`/numbers/${id}`,{method:'DELETE'});setNums(nums.filter(n=>n.id!==id))}
+  return(<div className="fade-in">
+    <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold">Phone Numbers</h2><button className="btn-primary" onClick={()=>setShow(!show)}>+ Add Number</button></div>
+    {show&&<form className="card p-5 mb-6 space-y-3" onSubmit={add}>
+      <div className="grid grid-cols-2 gap-3">
+        <div><label className="text-xs text-gray-500">Twilio Number</label><input className="input" placeholder="+34612345678" value={f.twilioNumber} onChange={e=>setF({...f,twilioNumber:e.target.value})} required/></div>
+        <div><label className="text-xs text-gray-500">Language</label><select className="input" value={f.language} onChange={e=>setF({...f,language:e.target.value})}>
+          <option value="es">Spanish</option><option value="en">English</option><option value="it">Italian</option><option value="fr">French</option></select></div>
+        <div><label className="text-xs text-gray-500">Agent</label><select className="input" value={f.agentId} onChange={e=>setF({...f,agentId:e.target.value})}>
+          <option value="">- Select -</option>{agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+        <div><label className="text-xs text-gray-500">Label</label><input className="input" placeholder="Spain Main" value={f.label} onChange={e=>setF({...f,label:e.target.value})}/></div></div>
+      <div className="flex gap-2"><button className="btn-primary" type="submit">Add</button><button className="btn-secondary" type="button" onClick={()=>setShow(false)}>Cancel</button></div></form>}
+    {nums.length===0?<div className="card p-8 text-center text-gray-400">No numbers yet</div>:
+      <div className="space-y-2">{nums.map(n=><div key={n.id} className="card p-4 flex justify-between items-center">
+        <div><span className="font-mono text-lg">{n.twilioNumber}</span>{n.label&&<span className="text-gray-400 ml-2">({n.label})</span>}
+        <div className="flex gap-2 mt-1"><span className="badge badge-blue">{n.language?.toUpperCase()}</span>{n.agent&&<span className="badge badge-green">{n.agent.name}</span>}</div></div>
+        <button className="text-red-400 text-sm hover:text-red-300" onClick={()=>del(n.id)}>Remove</button></div>)}</div>}
+  </div>)
+}
+
+function ConversationsPage({setPage}){
+  const[convs,setConvs]=useState([]);const[fl,setFl]=useState({channel:'',status:''});const[ld,setLd]=useState(true);
+  useEffect(()=>{setLd(true);const p=new URLSearchParams();if(fl.channel)p.set('channel',fl.channel);if(fl.status)p.set('status',fl.status);
+    api(`/conversations?${p}`).then(d=>setConvs(d.data)).finally(()=>setLd(false))},[fl]);
+  return(<div className="fade-in"><h2 className="text-2xl font-bold mb-4">Conversations</h2>
+    <div className="flex gap-3 mb-4">
+      <select className="input w-40" value={fl.channel} onChange={e=>setFl({...fl,channel:e.target.value})}><option value="">All channels</option><option value="voice">Voice</option><option value="whatsapp">WhatsApp</option></select>
+      <select className="input w-40" value={fl.status} onChange={e=>setFl({...fl,status:e.target.value})}><option value="">All statuses</option><option value="completed">Completed</option><option value="active">Active</option></select></div>
+    {ld?<p className="text-gray-500">Loading...</p>:convs.length===0?<div className="card p-8 text-center text-gray-400">No conversations yet</div>:
+      <div className="space-y-2">{convs.map(c=><div key={c.id} className="card p-4 cursor-pointer hover:border-green-800 transition-colors" onClick={()=>setPage(`conversation:${c.id}`)}>
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3"><span className="text-xl">{c.channel==='voice'?'📞':'💬'}</span>
+            <div><span className="font-mono">{c.remoteNumber||'Unknown'}</span><span className="text-gray-500 text-sm ml-2">{c.agent?.name}</span>
+            <p className="text-gray-500 text-xs">{new Date(c.createdAt).toLocaleString()}</p></div></div>
+          <div className="text-right"><span className={`badge ${c.status==='completed'?'badge-green':c.status==='active'?'badge-yellow':'badge-red'}`}>{c.status}</span>
+            <p className="text-gray-500 text-xs mt-1">{c.channel==='voice'?`${c.durationSeconds||0}s`:`${c._count?.messages||0} msgs`}</p></div></div>
+        {c.summary&&<p className="text-gray-400 text-sm mt-2 truncate">{c.summary}</p>}</div>)}</div>}
+  </div>)
+}
+
+function ConversationDetail({id,setPage}){
+  const[c,setC]=useState(null);
+  useEffect(()=>{api(`/conversations/${id}`).then(d=>setC(d.data))},[id]);
+  if(!c)return<p className="text-gray-500">Loading...</p>;
+  return(<div className="fade-in max-w-3xl">
+    <span className="cursor-pointer text-gray-400 hover:text-white" onClick={()=>setPage('conversations')}>← Conversations</span>
+    <div className="flex items-center gap-3 mt-3 mb-6"><span className="text-2xl">{c.channel==='voice'?'📞':'💬'}</span>
+      <div><h2 className="text-xl font-bold">{c.remoteNumber}</h2>
+      <p className="text-gray-500 text-sm">{c.agent?.name} · {new Date(c.createdAt).toLocaleString()} · <span className={c.status==='completed'?'text-green-400':'text-yellow-400'}>{c.status}</span></p></div></div>
+    {c.collectedData?.length>0&&<div className="card p-5 mb-4"><h3 className="font-semibold mb-3 text-green-400">Collected Data</h3>
+      <div className="grid grid-cols-2 gap-2">{c.collectedData.map(d=><div key={d.id} className="flex justify-between p-2 rounded bg-gray-800">
+        <span className="text-gray-400 text-sm">{d.label}</span><span className="font-medium text-sm">{d.value}</span></div>)}</div></div>}
+    <div className="card p-5"><h3 className="font-semibold mb-3">Conversation</h3>
+      <div className="flex flex-col gap-2" style={{maxHeight:'500px',overflowY:'auto'}}>
+        {c.messages?.map(m=><div key={m.id} className={`chat-bubble ${m.direction==='inbound'?'chat-inbound':'chat-outbound'}`}>
+          <p className="text-xs text-gray-500 mb-1">{m.direction==='inbound'?'Customer':'Agent'}</p><p className="text-sm">{m.content}</p></div>)}
+        {(!c.messages||c.messages.length===0)&&c.transcription&&<div className="text-sm text-gray-300 whitespace-pre-wrap">{c.transcription}</div>}</div></div>
+    {c.summary&&<div className="card p-4 mt-4"><h3 className="font-semibold mb-2 text-sm text-gray-400">Summary</h3><p className="text-sm">{c.summary}</p></div>}
+  </div>)
+}
+
+function SettingsPage(){
+  const[s,setS]=useState(null);const[f,setF]=useState({});const[msg,setMsg]=useState('');
+  useEffect(()=>{api('/settings').then(d=>setS(d.data))},[]);
+  async function save(){try{await api('/settings',{method:'PUT',body:JSON.stringify(f)});setMsg('Saved!');api('/settings').then(d=>setS(d.data));setTimeout(()=>setMsg(''),2000)}catch(e){setMsg('Error: '+e.message)}}
+  if(!s)return<p className="text-gray-500">Loading...</p>;
+  return(<div className="fade-in max-w-xl"><h2 className="text-2xl font-bold mb-6">Settings</h2>
+    <div className="card p-5 mb-4"><h3 className="font-semibold mb-3">Connection Status</h3><div className="space-y-2">
+      <div className="flex justify-between"><span>Twilio</span><span className={`badge ${s.hasTwilio?'badge-green':'badge-red'}`}>{s.hasTwilio?'Connected':'Not set'}</span></div>
+      <div className="flex justify-between"><span>OpenRouter (LLM)</span><span className={`badge ${s.hasOpenrouter?'badge-green':'badge-yellow'}`}>{s.hasOpenrouter?'Connected':'Using .env default'}</span></div>
+      <div className="flex justify-between"><span>ElevenLabs (Voice)</span><span className={`badge ${s.hasElevenlabs?'badge-green':'badge-yellow'}`}>{s.hasElevenlabs?'Connected':'Twilio TTS fallback'}</span></div></div></div>
+    <div className="card p-5 space-y-4"><h3 className="font-semibold mb-2">API Keys</h3><p className="text-xs text-gray-500">Leave empty to keep current values.</p>
+      <div><label className="text-sm text-gray-400">Twilio Account SID</label><input className="input" placeholder="ACxxxxxxxxxx" onChange={e=>setF({...f,twilioSid:e.target.value})}/></div>
+      <div><label className="text-sm text-gray-400">Twilio Auth Token</label><input className="input" type="password" placeholder="••••••" onChange={e=>setF({...f,twilioToken:e.target.value})}/></div>
+      <div><label className="text-sm text-gray-400">OpenRouter API Key</label><input className="input" type="password" placeholder="sk-or-••••" onChange={e=>setF({...f,openrouterKey:e.target.value})}/></div>
+      <div><label className="text-sm text-gray-400">ElevenLabs API Key</label><input className="input" type="password" placeholder="••••••" onChange={e=>setF({...f,elevenlabsKey:e.target.value})}/></div>
+      {msg&&<p className={`text-sm ${msg.startsWith('Error')?'text-red-400':'text-green-400'}`}>{msg}</p>}
+      <button className="btn-primary" onClick={save}>Save</button></div></div>)
+}
+
+ReactDOM.render(<App/>,document.getElementById('root'));
+</script>
+</body>
+</html>

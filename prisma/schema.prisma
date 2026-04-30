@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  passwordHash    String
+  companyName     String?
+  twilioSid       String?
+  twilioToken     String?
+  elevenlabsKey   String?
+  openrouterKey   String?
+  plan            String   @default("free")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  agents       Agent[]
+  phoneNumbers PhoneNumber[]
+  conversations Conversation[]
+  apiKeys      ApiKey[]
+}
+
+model Agent {
+  id                    String   @id @default(uuid())
+  userId                String
+  name                  String
+  description           String?
+  // Personality
+  systemPrompt          String    // Tone, behavior, personality
+  // Presentation
+  greetingMessage       String?   // How the agent introduces itself
+  // AI Disclosure (always truthful, editable wording)
+  aiDisclosure          String   @default("Yes, I'm an AI assistant. I'm here to collect your information accurately so our team can get back to you with a personalized response. If at any point you'd prefer to speak with a person, just let me know.")
+  // Closing
+  closingMessage        String?   // What to say when all data is collected
+  goodbyeMessage        String?   // Final goodbye after closing
+  // Channels & Voice
+  channels              String   @default("[\"voice\",\"whatsapp\"]")
+  voiceId               String?
+  voiceName             String?
+  llmModel              String   @default("openai/gpt-4o-mini")
+  // When set, overrides PhoneNumber.language for voice/WhatsApp sessions with this agent.
+  languageOverride      String?
+  temperature           Float    @default(0.7)
+  maxCallDuration       Int      @default(600)
+  whatsappTimeout       Int      @default(1440)
+  fallbackBehavior      String   @default("take_message")
+  fallbackTransferNumber String?
+  crossChannelSummary   Boolean  @default(true)
+
+  // Role: "intake" (captador), "sales" (comercial), or "standalone"
+  role                  String   @default("standalone")
+  // For intake agents: id of the sales agent to hand off to after pricing
+  salesAgentId          String?  @unique
+  // Bridge phrase the intake agent says right before handing off to sales
+  handoffMessage        String?
+
+  // Pricing (only used when role = "intake" or "standalone")
+  // JSON array of variable definitions: [{label, type, choices?, required}]
+  // type: text | number | choice | boolean
+  pricingVariables      String?
+  // Math expression in terms of the variable labels, e.g.
+  //   "base_price + extra_hours * 180 + (drone ? 250 : 0)"
+  pricingFormula        String?
+  // Currency symbol for the calculated total ("EUR", "USD", etc.)
+  pricingCurrency       String   @default("EUR")
+
+  // Output notifications
+  notifyDashboard       Boolean  @default(true)
+  notifyEmail           String?
+  notifyWhatsapp        String?
+  notifyWebhookUrl      String?
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scriptSteps     ScriptStep[]
+  phoneNumbers    PhoneNumber[]
+  conversations   Conversation[]
+  // Self-relation: intake agent → sales agent
+  salesAgent      Agent?         @relation("IntakeToSales", fields: [salesAgentId], references: [id])
+  intakeAgent     Agent?         @relation("IntakeToSales")
+}
+
+model ScriptStep {
+  id              String   @id @default(uuid())
+  agentId         String
+  stepOrder       Int
+  label           String   // Internal: "event_type"
+  promptText      String   // What the AI asks
+  dataType        String   // text, number, date, email, phone, boolean, choice
+  choices         String?  // JSON array for choice type
+  isRequired      Boolean  @default(true)
+  conditionStepId String?
+  conditionValue  String?
+  createdAt       DateTime @default(now())
+
+  agent         Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  conditionStep ScriptStep?        @relation("StepCondition", fields: [conditionStepId], references: [id])
+  dependentSteps ScriptStep[]      @relation("StepCondition")
+  collectedData ConversationData[]
+}
+
+model PhoneNumber {
+  id           String   @id @default(uuid())
+  userId       String
+  agentId      String?
+  twilioNumber String
+  twilioSid    String?
+  countryCode  String?
+  language     String   @default("es")
+  channels     String   @default("[\"voice\",\"whatsapp\"]") // JSON array
+  label        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent         Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  conversations Conversation[]
+}
+
+model Conversation {
+  id                   String   @id @default(uuid())
+  userId               String
+  agentId              String?
+  phoneNumberId        String?
+  linkedConversationId String?
+  channel              String   // voice, whatsapp
+  twilioCallSid        String?  @unique
+  direction            String   // inbound, outbound
+  remoteNumber         String?
+  language             String?
+  status               String   @default("active") // active, completed, failed, transferred, abandoned
+  outcome              String?  // data_collected, partial, failed, transferred
+  durationSeconds      Int?
+  messageCount         Int      @default(0)
+  recordingUrl         String?
+  aiConfidence         Float?
+  transcription        String?
+  summary              String?
+  scriptProgress       String?  // JSON
+  metadata             String?  // JSON
+  // Handoff state for intake → sales flow within a single call
+  // Values: "intake" (in captador phase), "sales" (in commercial phase),
+  //         "completed" (no handoff occurred or already finished)
+  currentRole          String   @default("intake")
+  // Calculated total when intake completes — null until pricing runs
+  calculatedTotal      Float?
+  // The sales agent that took over (if any)
+  salesAgentId         String?
+  startedAt            DateTime?
+  endedAt              DateTime?
+  lastActivityAt       DateTime?
+  createdAt            DateTime @default(now())
+
+  user          User               @relation(fields: [userId], references: [id])
+  agent         Agent?             @relation(fields: [agentId], references: [id])
+  phoneNumber   PhoneNumber?       @relation(fields: [phoneNumberId], references: [id])
+  messages      Message[]
+  collectedData ConversationData[]
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  conversationId  String
+  direction       String   // inbound, outbound
+  content         String
+  mediaUrl        String?
+  mediaType       String?
+  twilioMessageSid String?
+  status          String?  // sent, delivered, read, failed
+  createdAt       DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model ConversationData {
+  id            String   @id @default(uuid())
+  conversationId String
+  scriptStepId  String?
+  label         String
+  value         String?
+  dataType      String?
+  confidence    Float?
+  createdAt     DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  scriptStep   ScriptStep?  @relation(fields: [scriptStepId], references: [id])
+}
+
+model ApiKey {
+  id         String    @id @default(uuid())
+  userId     String
+  keyHash    String
+  keyPrefix  String
+  label      String?
+  permissions String   @default("[\"read\"]") // JSON
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
